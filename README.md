@@ -28,6 +28,21 @@ docker compose up -d
 docker compose logs -f
 ```
 
+## Clean up duplicates
+Removes the *same song* appearing more than once by **normalized artist + title**
+(e.g. an album cut and a remaster), keeping the first copy. It only removes the
+playlist entry — the track/stream itself is untouched. Dry-run by default, and it
+prints the REMOVE vs KEEP title of each pair so you can verify the match.
+
+```bash
+docker compose run --rm music-organizer python organizer.py dedupe            # preview main
+docker compose run --rm music-organizer python organizer.py dedupe main --apply
+docker compose run --rm music-organizer python organizer.py dedupe <id> --apply
+# only remove specific stream ids (e.g. after reviewing a preview):
+docker compose run --rm music-organizer python organizer.py dedupe main --apply --only 111,222
+```
+Live/remix/acoustic versions are deliberately kept (not treated as duplicates).
+
 ## How it works
 - Source, classification and destinations are all Tidal via `tidalapi`.
 - State lives in `data/state.json` (processed track ids + name→id playlist cache);

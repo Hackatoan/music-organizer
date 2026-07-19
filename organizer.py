@@ -14,6 +14,7 @@ Subcommands:
 """
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -439,6 +440,78 @@ def cmd_sample():
         print(f"      -> {', '.join(names)}\n")
 
 
+_DEDUP_TAIL = re.compile(
+    r"\s*[-–]\s*(remaster(ed)?|mono|stereo|single version|album version|"
+    r"radio edit|\d{4} version|\d{4} remaster).*$", re.I)
+
+
+def dedup_key(t):
+    """Normalized (artist|title) key so the SAME song counts as one even when it's
+    a different Tidal stream (remaster/reissue/alt release). Deliberately does NOT
+    merge live/remix/acoustic versions."""
+    m = track_meta(t)
+    def norm(s):
+        s = s.lower()
+        s = re.sub(r"\(.*?\)|\[.*?\]", "", s)          # drop (...) / [...] qualifiers
+        s = _DEDUP_TAIL.sub("", s)                       # drop "- Remastered 2011" etc.
+        s = re.sub(r"\bfeat\.?.*$", "", s)               # drop "feat. ..."
+        s = re.sub(r"[^a-z0-9]+", " ", s).strip()        # keep alnum only
+        return s
+    return norm(m["artist"]) + " | " + norm(m["title"])
+
+
+def cmd_dedupe():
+    """Remove same-song duplicates (by artist+title) from a playlist, keeping the
+    first copy. Dry-run unless --apply is passed. Does NOT delete the track/stream.
+    Usage: dedupe [main|<playlist_id>] [--apply]"""
+    raw = sys.argv[2:]
+    apply = "--apply" in raw
+    only = None
+    if "--only" in raw and raw.index("--only") + 1 < len(raw):
+        val = raw[raw.index("--only") + 1]
+        only = {x.strip() for x in val.split(",") if x.strip()}
+    else:
+        val = None
+    positional = [a for a in raw if not a.startswith("--") and a != val]
+    cfg = load_config()
+    session = restore_session()
+    if not session:
+        log("Not logged in.")
+        sys.exit(1)
+    target = positional[0] if positional else "main"
+    pid = str(cfg["main_playlist_id"]) if target == "main" else target
+    tracks = all_playlist_tracks(session, pid)
+    seen, dups = {}, []
+    for idx, t in enumerate(tracks):
+        k = dedup_key(t)
+        if k in seen:
+            dups.append((idx, t, seen[k]))
+        else:
+            seen[k] = t
+    if only is not None:
+        dups = [d for d in dups if str(d[1].id) in only]
+    print(f"\nPlaylist {pid}: {len(tracks)} tracks, {len(dups)} duplicate(s) "
+          f"{'(DRY RUN — nothing removed)' if not apply else '(REMOVING)'}\n")
+    for idx, t, kept in dups:
+        md, mk = track_meta(t), track_meta(kept)
+        print(f"  REMOVE  {md['artist']} — {t.name}   (id {t.id})")
+        print(f"  KEEP    {mk['artist']} — {kept.name}   (id {kept.id})\n")
+    if not dups or not apply:
+        if dups and not apply:
+            print("\nRe-run with --apply to remove these.")
+        return
+    pl = session.playlist(pid)
+    for idx, t, kept in sorted(dups, key=lambda x: x[0], reverse=True):  # high->low
+        try:
+            pl.remove_by_index(idx)
+            print(f"  removed idx {idx}: {track_meta(t)['artist']} — {t.name}  "
+                  f"(kept: {track_meta(kept)['artist']} — {kept.name})")
+        except Exception as e:
+            log(f"  remove failed at {idx} ({t.name}): {e}")
+        time.sleep(cfg["tidal_delay_seconds"])
+    print(f"\nDone — removed {len(dups)} duplicate(s).")
+
+
 def cmd_selftest():
     """Validate the Tidal write path: create a temp playlist, add a track,
     verify, then delete it."""
@@ -467,4 +540,5 @@ def cmd_once():
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
     {"login": cmd_login, "list-playlists": cmd_list_playlists, "sample": cmd_sample,
+     "dedupe": cmd_dedupe,
      "run": cmd_run, "selftest": cmd_selftest, "once": cmd_once}.get(cmd, cmd_run)()
