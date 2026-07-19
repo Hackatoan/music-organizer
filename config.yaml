@@ -1,0 +1,19 @@
+# Set this after running: docker compose run --rm music-organizer python organizer.py list-playlists
+main_playlist_id: ""
+
+poll_interval_seconds: 300          # how often to check the main playlist
+process_existing_on_first_run: true # organize everything already in the playlist on first run
+batch_size: 10                      # tracks classified per Gemini call
+gemini_model: gemini-2.5-flash
+gemini_delay_seconds: 4             # pause between Gemini calls (stay under RPM)
+tidal_delay_seconds: 0.5           # pause between Tidal writes
+add_chunk_size: 50                 # track ids per playlist add call
+max_writes_per_pass: 0             # 0 = unlimited. Set e.g. 25 to trickle a huge backlog gently.
+max_activities: 3                   # max activity playlists a song can join
+fallback_playlist: "Unsorted"       # catch-all for tracks the LLM can't classify
+
+# Playlist naming. {name} is the genre / subgenre / activity the LLM picks.
+naming:
+  genre: "Genre · {name}"
+  subgenre: "Sub · {name}"
+  activity: "Activity · {name}"

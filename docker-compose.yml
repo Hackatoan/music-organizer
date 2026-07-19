@@ -1,0 +1,13 @@
+services:
+  music-organizer:
+    build: .
+    image: music-organizer:latest
+    container_name: music-organizer
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+      - ./config.yaml:/app/config.yaml:ro
+      - ./organizer.py:/app/organizer.py:ro
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
