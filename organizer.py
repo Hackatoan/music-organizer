@@ -16,11 +16,13 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.request
 import urllib.error
 from pathlib import Path
 
+import requests  # transitive via tidalapi; imported directly to patch its timeout
 import tidalapi
 import yaml
 
@@ -29,6 +31,23 @@ SESSION_FILE = DATA / "session.json"
 STATE_FILE = DATA / "state.json"
 CONFIG_FILE = Path(os.environ.get("CONFIG_FILE", "./config.yaml"))
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+# tidalapi drives every call through requests.Session, which has NO default
+# timeout: a silently-dropped connection leaves recv() blocked forever and
+# wedges the whole poll loop (happened 2026-08-17, hung 11 days at 0% CPU with
+# no crash, so restart:unless-stopped never fired). Inject a default timeout so
+# a stalled call raises instead — the per-pass except in cmd_run then recovers.
+HTTP_TIMEOUT = float(os.environ.get("HTTP_TIMEOUT", "30"))
+_orig_session_request = requests.Session.request
+
+
+def _session_request_with_timeout(self, *a, **kw):
+    if kw.get("timeout") is None:
+        kw["timeout"] = HTTP_TIMEOUT
+    return _orig_session_request(self, *a, **kw)
+
+
+requests.Session.request = _session_request_with_timeout
 
 
 def log(*a):
@@ -43,11 +62,12 @@ def load_config():
     cfg.setdefault("poll_interval_seconds", 300)
     cfg.setdefault("process_existing_on_first_run", True)
     cfg.setdefault("batch_size", 10)
-    cfg.setdefault("gemini_model", "gemini-2.5-flash")
+    cfg.setdefault("gemini_model", "gemini-flash-latest")
     cfg.setdefault("gemini_delay_seconds", 4)   # pause between classify calls (RPM safety)
     cfg.setdefault("tidal_delay_seconds", 0.5)  # pause between Tidal writes
     cfg.setdefault("add_chunk_size", 50)        # track ids per playlist.add() call
     cfg.setdefault("max_writes_per_pass", 0)    # 0 = unlimited; set e.g. 25 to trickle big backlogs
+    cfg.setdefault("pass_watchdog_seconds", 900) # force exit+restart if a pass wedges past this
     cfg.setdefault("max_activities", 3)
     cfg.setdefault("fallback_playlist", "Unsorted")
     cfg.setdefault("naming", {})
@@ -403,20 +423,34 @@ def one_pass(cfg, session, state):
     log("pass complete")
 
 
+def _watchdog_exit(seconds):
+    log(f"WATCHDOG: pass exceeded {seconds}s; forcing exit for container restart")
+    os._exit(1)
+
+
 def cmd_run():
     cfg = load_config()
     session = restore_session()
     if not session:
         log("Not logged in. Run: python organizer.py login")
         sys.exit(1)
+    watchdog_s = cfg["pass_watchdog_seconds"]
     log("organizer started; poll every", cfg["poll_interval_seconds"], "s")
     while True:
+        # Belt-and-suspenders: even with per-call timeouts, never let one pass
+        # block the loop forever. If a pass overruns, exit so restart:unless-stopped
+        # brings a fresh process back.
+        wd = threading.Timer(watchdog_s, _watchdog_exit, args=(watchdog_s,))
+        wd.daemon = True
+        wd.start()
         try:
             session = restore_session() or session
             state = load_state()
             one_pass(cfg, session, state)
         except Exception as e:
             log("pass error:", repr(e))
+        finally:
+            wd.cancel()
         time.sleep(cfg["poll_interval_seconds"])
 
 

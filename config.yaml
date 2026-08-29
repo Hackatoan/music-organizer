@@ -4,7 +4,7 @@ main_playlist_id: ""
 poll_interval_seconds: 300          # how often to check the main playlist
 process_existing_on_first_run: true # organize everything already in the playlist on first run
 batch_size: 10                      # tracks classified per Gemini call
-gemini_model: gemini-2.5-flash
+gemini_model: gemini-flash-latest
 gemini_delay_seconds: 4             # pause between Gemini calls (stay under RPM)
 tidal_delay_seconds: 0.5           # pause between Tidal writes
 add_chunk_size: 50                 # track ids per playlist add call
