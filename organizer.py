@@ -231,6 +231,13 @@ def bulk_add(session, pid, track_ids, cfg):
                 wait = 30 if code == 429 else 2 ** attempt
                 log(f"  tidal add retry ({code or e}) in {wait}s")
                 time.sleep(wait)
+        else:
+            # exhausted all retries: don't silently swallow this — the caller
+            # (one_pass) relies on an exception here to keep these tracks OFF
+            # the processed set, otherwise they'd be marked done despite never
+            # actually landing in the playlist.
+            raise RuntimeError(
+                f"failed to add {len(chunk)} track(s) to playlist {pid} after 5 attempts")
         time.sleep(cfg["tidal_delay_seconds"])
     return added
 
