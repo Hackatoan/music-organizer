@@ -113,6 +113,13 @@ def save_session(session):
         "refresh_token": session.refresh_token,
         "expiry_time": session.expiry_time.isoformat() if session.expiry_time else None,
     }))
+    # session.json holds a long-lived Tidal refresh_token (full account access,
+    # not just this run) — write_text() leaves it at the umask default (often
+    # world-readable, e.g. 644). Lock it down to owner-only.
+    try:
+        SESSION_FILE.chmod(0o600)
+    except OSError as e:
+        log("warning: could not chmod session file to 600:", e)
 
 
 def restore_session():
