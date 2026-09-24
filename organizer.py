@@ -375,13 +375,25 @@ def one_pass(cfg, session, state):
             log("baseline set; existing tracks marked processed (skipping them).")
             return
 
+    # Fetched lazily, at most once per pass: both phases below need the
+    # user's current playlist list, and until Phase 2 creates any new ones
+    # (via ensure_playlist) that list can't have changed, so a second fetch
+    # would just be the same paginated Tidal call repeated.
+    playlists_cache = None
+
+    def get_user_playlists():
+        nonlocal playlists_cache
+        if playlists_cache is None:
+            playlists_cache = list(user_playlists(session))
+        return playlists_cache
+
     # ---- Phase 1: classify new tracks (cached + throttled) ----
     to_classify = [t for t in tracks
                    if str(t.id) not in state["_processed_set"]
                    and str(t.id) not in state["classified"]]
     if to_classify:
         log(f"classifying {len(to_classify)} new track(s)")
-        existing_names = {pl.name for pl in user_playlists(session)} | set(state["playlists"])
+        existing_names = {pl.name for pl in get_user_playlists()} | set(state["playlists"])
         bs = cfg["batch_size"]
         for i in range(0, len(to_classify), bs):
             batch = to_classify[i:i + bs]
@@ -415,7 +427,7 @@ def one_pass(cfg, session, state):
             name_tids.setdefault(name, []).append(tid)
     log(f"writing {len(pending)} track(s) across {len(name_tids)} playlist(s)")
 
-    pl_index = {pl.name: pl.id for pl in user_playlists(session)}
+    pl_index = {pl.name: pl.id for pl in get_user_playlists()}
     failed = set()
     for name, tids in sorted(name_tids.items()):
         try:
