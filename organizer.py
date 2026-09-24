@@ -578,8 +578,16 @@ def cmd_once():
     one_pass(cfg, session, load_state())
 
 
+COMMANDS = {
+    "login": cmd_login, "list-playlists": cmd_list_playlists, "sample": cmd_sample,
+    "dedupe": cmd_dedupe, "run": cmd_run, "selftest": cmd_selftest, "once": cmd_once,
+}
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
-    {"login": cmd_login, "list-playlists": cmd_list_playlists, "sample": cmd_sample,
-     "dedupe": cmd_dedupe,
-     "run": cmd_run, "selftest": cmd_selftest, "once": cmd_once}.get(cmd, cmd_run)()
+    if cmd not in COMMANDS:
+        print(f"Unknown command: {cmd!r}")
+        print("Usage: python organizer.py <command>")
+        print("Commands:", ", ".join(sorted(COMMANDS)))
+        sys.exit(1)
+    COMMANDS[cmd]()
