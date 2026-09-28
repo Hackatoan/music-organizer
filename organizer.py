@@ -221,10 +221,15 @@ def chunks(seq, n):
         yield seq[i:i + n]
 
 
-def bulk_add(session, pid, track_ids, cfg):
+def bulk_add(session, pid, track_ids, cfg, known_empty=False):
     """Add track_ids to playlist pid, skipping ones already present, in chunks
-    with throttling and 429-aware retry. Returns count added."""
-    existing = playlist_track_ids(session, pid)
+    with throttling and 429-aware retry. Returns count added.
+
+    known_empty=True skips the existing-tracks lookup entirely: pass it when
+    the playlist was just created moments earlier this pass (ensure_playlist),
+    since a brand-new playlist can't already contain any of these tracks and
+    the paginated fetch would just confirm an empty set."""
+    existing = set() if known_empty else playlist_track_ids(session, pid)
     to_add = [tid for tid in track_ids if str(tid) not in existing]
     added = 0
     for chunk in chunks(to_add, cfg["add_chunk_size"]):
@@ -431,8 +436,9 @@ def one_pass(cfg, session, state):
     failed = set()
     for name, tids in sorted(name_tids.items()):
         try:
+            is_new = name not in state["playlists"] and name not in pl_index
             plid = ensure_playlist(session, state, name, pl_index)
-            n = bulk_add(session, plid, tids, cfg)
+            n = bulk_add(session, plid, tids, cfg, known_empty=is_new)
             save_state(state)
             if n:
                 log(f"  +{n} -> {name}")
