@@ -577,6 +577,9 @@ def cmd_selftest():
     verify, then delete it."""
     cfg = load_config()
     session = restore_session()
+    if not session:
+        log("Not logged in. Run: python organizer.py login")
+        sys.exit(1)
     tid = all_playlist_tracks(session, str(cfg["main_playlist_id"]))[0].id
     pl = session.user.create_playlist("zz-organizer-selftest", "temp — safe to delete")
     print("created:", pl.id)
