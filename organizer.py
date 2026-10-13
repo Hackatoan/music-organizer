@@ -74,6 +74,14 @@ def load_config():
     cfg["naming"].setdefault("genre", "Genre · {name}")
     cfg["naming"].setdefault("subgenre", "Sub · {name}")
     cfg["naming"].setdefault("activity", "Activity · {name}")
+    # Validate that naming templates only contain the {name} placeholder to prevent
+    # format string errors if config is misconfigured or maliciously crafted.
+    for key, template in cfg["naming"].items():
+        try:
+            template.format(name="test")
+        except (KeyError, IndexError) as e:
+            raise ValueError(f"naming.{key} has invalid placeholder: {e}. "
+                           f"Only {{name}} is allowed, but got: {template!r}")
     return cfg
 
 
