@@ -12,6 +12,7 @@ Point it at a source Tidal playlist and it classifies each track with an LLM, th
 
 - LLM-based track classification
 - Auto-sorts into genre / subgenre / activity playlists
+- Mirrors Tidal hi-res lossless tracks into a dedicated "Hi-Res" playlist (no LLM needed)
 - Runs on a schedule
 
 ## Tech Stack

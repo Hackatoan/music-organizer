@@ -11,6 +11,7 @@ add_chunk_size: 50                 # track ids per playlist add call
 max_writes_per_pass: 0             # 0 = unlimited. Set e.g. 25 to trickle a huge backlog gently.
 max_activities: 3                   # max activity playlists a song can join
 fallback_playlist: "Unsorted"       # catch-all for tracks the LLM can't classify
+hires_playlist: "Hi-Res"            # mirror hi-res lossless tracks here; "" to disable
 
 # Playlist naming. {name} is the genre / subgenre / activity the LLM picks.
 naming:
