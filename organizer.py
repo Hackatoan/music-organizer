@@ -70,6 +70,7 @@ def load_config():
     cfg.setdefault("pass_watchdog_seconds", 900) # force exit+restart if a pass wedges past this
     cfg.setdefault("max_activities", 3)
     cfg.setdefault("fallback_playlist", "Unsorted")
+    cfg.setdefault("hires_playlist", "Hi-Res")   # "" disables the hi-res mirror playlist
     cfg.setdefault("naming", {})
     cfg["naming"].setdefault("genre", "Genre · {name}")
     cfg["naming"].setdefault("subgenre", "Sub · {name}")
@@ -94,6 +95,7 @@ def load_state():
     s.setdefault("playlists", {})    # name -> playlist_id
     s.setdefault("classified", {})   # track_id(str) -> [playlist names]  (cache)
     s.setdefault("initialized", False)
+    s.setdefault("hires_done", [])   # track ids already mirrored into the hi-res playlist
     s["_processed_set"] = set(s["processed"])
     return s
 
@@ -370,6 +372,40 @@ def targets_for(cfg, cls):
     return names
 
 
+def is_hires(t):
+    """True when Tidal tags the track as hi-res lossless (up to 24-bit/192 kHz FLAC).
+    media_metadata_tags is the catalogue property; audio_quality only reflects the
+    session's requested quality, so it can't be used to tell tracks apart."""
+    return "HIRES_LOSSLESS" in (getattr(t, "media_metadata_tags", None) or [])
+
+
+def sync_hires(cfg, session, state, tracks, get_user_playlists):
+    """Mirror every hi-res track of the main playlist into one playlist.
+
+    Needs no LLM: the tag comes from Tidal. Tracks already mirrored are remembered
+    in state["hires_done"], so a track you later remove by hand isn't re-added, and
+    existing tracks are backfilled on the first pass after enabling this."""
+    name = (cfg.get("hires_playlist") or "").strip()
+    if not name:
+        return
+    done = set(state["hires_done"])
+    todo = [str(t.id) for t in tracks if is_hires(t) and str(t.id) not in done]
+    if not todo:
+        return
+    try:
+        pl_index = {pl.name: pl.id for pl in get_user_playlists()}
+        is_new = name not in state["playlists"] and name not in pl_index
+        plid = ensure_playlist(session, state, name, pl_index,
+                               "Hi-res lossless tracks - auto-organized by music-organizer")
+        n = bulk_add(session, plid, todo, cfg, known_empty=is_new)
+    except Exception as e:
+        log(f"hi-res sync failed, retrying next pass: {e}")
+        return
+    state["hires_done"] = sorted(done | set(todo))
+    save_state(state)
+    log(f"hi-res: +{n} -> {name} ({len(todo)} new hi-res track(s) seen)")
+
+
 def one_pass(cfg, session, state):
     pid = str(cfg["main_playlist_id"]).strip()
     if not pid:
@@ -399,6 +435,9 @@ def one_pass(cfg, session, state):
         if playlists_cache is None:
             playlists_cache = list(user_playlists(session))
         return playlists_cache
+
+    # ---- Hi-res mirror (independent of classification) ----
+    sync_hires(cfg, session, state, tracks, get_user_playlists)
 
     # ---- Phase 1: classify new tracks (cached + throttled) ----
     to_classify = [t for t in tracks
