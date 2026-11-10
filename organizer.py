@@ -287,7 +287,8 @@ def gemini_classify(cfg, tracks, existing_names):
     model = cfg["gemini_model"]
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     instr = CLASSIFY_INSTRUCTIONS.format(maxact=cfg["max_activities"])
-    lines = [f'{t["index"]}. "{t["title"]}" by {t["artist"]} (album: {t["album"]})'
+    # JSON-encode track metadata to prevent prompt injection via malicious track titles/artists
+    lines = [f'{t["index"]}. {json.dumps({"title": t["title"], "artist": t["artist"], "album": t["album"]})}'
              for t in tracks]
     existing = "\n".join(sorted(existing_names)) or "(none yet)"
     prompt = (
