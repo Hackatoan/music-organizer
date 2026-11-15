@@ -14,6 +14,7 @@ Point it at a source Tidal playlist and it classifies each track with an LLM, th
 - Auto-sorts into genre / subgenre / activity playlists
 - Mirrors Tidal hi-res lossless tracks into a dedicated "Hi-Res" playlist (no LLM needed)
 - Runs on a schedule
+- Offline `status` command: processed / queued / hi-res counts from saved state, no Tidal or Gemini calls (`--json` for scripts)
 
 ## Tech Stack
 
@@ -25,6 +26,11 @@ Python · tidalapi · Gemini · Docker
 pip install -r requirements.txt
 # configure Tidal + LLM credentials, then:
 python3 organizer.py
+
+# offline summary of what's organized and what's queued (no network, no login)
+python3 organizer.py status          # or: status --json
+# in the container:
+docker compose run --rm music-organizer python organizer.py status
 ```
 
 ## Deployment

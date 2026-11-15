@@ -11,6 +11,7 @@ Subcommands:
     python organizer.py list-playlists  # print your playlists + ids (pick the main one)
     python organizer.py run             # the watch loop (used by the container)
     python organizer.py once            # single pass, then exit (handy for testing)
+    python organizer.py status [--json] # offline summary of saved state (no Tidal/Gemini calls)
 """
 import json
 import os
@@ -654,9 +655,60 @@ def cmd_once():
     one_pass(cfg, session, load_state())
 
 
+def status_summary(cfg, state, top=10):
+    """Pure summary of saved state — no network. Returns a JSON-friendly dict."""
+    pending = {tid: names for tid, names in state["classified"].items()
+               if tid not in state["_processed_set"]}
+    per_playlist = {}
+    for names in pending.values():
+        for name in names:
+            per_playlist[name] = per_playlist.get(name, 0) + 1
+    fb = cfg.get("fallback_playlist") or "Unsorted"
+    return {
+        "main_playlist_id": str(cfg.get("main_playlist_id") or ""),
+        "initialized": bool(state["initialized"]),
+        "processed": len(state["_processed_set"]),
+        "pending_writes": len(pending),
+        "pending_fallback": per_playlist.get(fb, 0),
+        "known_playlists": len(state["playlists"]),
+        "hires_playlist": (cfg.get("hires_playlist") or "").strip(),
+        "hires_mirrored": len(state["hires_done"]),
+        "top_pending_playlists": sorted(per_playlist.items(),
+                                        key=lambda kv: (-kv[1], kv[0]))[:top],
+    }
+
+
+def cmd_status():
+    """Offline summary of state.json: what's been organized and what's queued.
+    Makes no Tidal or Gemini calls and needs no login. Usage: status [--json]"""
+    cfg = load_config()
+    if not STATE_FILE.exists():
+        print(f"No state yet at {STATE_FILE} — run 'once' or 'run' first.")
+        return
+    info = status_summary(cfg, load_state())
+    if "--json" in sys.argv[2:]:
+        print(json.dumps(info, indent=2, ensure_ascii=False))
+        return
+    print(f"State file:        {STATE_FILE}")
+    print(f"Main playlist:     {info['main_playlist_id'] or '(not set)'}")
+    print(f"Initialized:       {'yes' if info['initialized'] else 'no'}")
+    print(f"Processed tracks:  {info['processed']}")
+    print(f"Pending writes:    {info['pending_writes']}"
+          f"  ({info['pending_fallback']} headed to fallback)")
+    print(f"Known playlists:   {info['known_playlists']}")
+    hires = info["hires_playlist"]
+    print(f"Hi-res mirrored:   {info['hires_mirrored']}"
+          f"  ({'-> ' + hires if hires else 'mirror disabled'})")
+    if info["top_pending_playlists"]:
+        print("\nQueued per playlist (top %d):" % len(info["top_pending_playlists"]))
+        for name, n in info["top_pending_playlists"]:
+            print(f"  {n:>5}  {name}")
+
+
 COMMANDS = {
     "login": cmd_login, "list-playlists": cmd_list_playlists, "sample": cmd_sample,
     "dedupe": cmd_dedupe, "run": cmd_run, "selftest": cmd_selftest, "once": cmd_once,
+    "status": cmd_status,
 }
 
 if __name__ == "__main__":
