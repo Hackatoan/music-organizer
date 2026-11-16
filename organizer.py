@@ -12,6 +12,7 @@ Subcommands:
     python organizer.py run             # the watch loop (used by the container)
     python organizer.py once            # single pass, then exit (handy for testing)
     python organizer.py status [--json] # offline summary of saved state (no Tidal/Gemini calls)
+    python organizer.py config [--json] # offline: effective config (file + defaults), example names
 """
 import json
 import os
@@ -705,10 +706,62 @@ def cmd_status():
             print(f"  {n:>5}  {name}")
 
 
+def config_report(cfg, file_keys):
+    """Pure view of the effective config — no network. file_keys is the set of
+    top-level keys actually present in config.yaml; everything else is a default."""
+    naming_file = file_keys.get("naming") or set()
+    settings = {}
+    for k, v in sorted(cfg.items()):
+        if k == "naming":
+            continue
+        settings[k] = {"value": v, "source": "file" if k in file_keys else "default"}
+    naming = {k: {"template": t, "example": t.format(name="Rock"),
+                  "source": "file" if k in naming_file else "default"}
+              for k, t in sorted(cfg["naming"].items())}
+    return {
+        "config_file": str(CONFIG_FILE),
+        "config_file_exists": CONFIG_FILE.exists(),
+        "settings": settings,
+        "naming": naming,
+        "gemini_api_key_set": bool(GEMINI_KEY),
+        "tidal_session_present": SESSION_FILE.exists(),
+    }
+
+
+def cmd_config():
+    """Offline: print the effective config (config.yaml merged with defaults),
+    marking which values are defaults, plus example playlist names. Never prints
+    secrets — only whether GEMINI_API_KEY / the Tidal session exist.
+    Usage: config [--json]"""
+    cfg = load_config()   # also validates the naming templates
+    raw = yaml.safe_load(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
+    raw = raw if isinstance(raw, dict) else {}
+    file_keys = {k: None for k in raw}
+    if isinstance(raw.get("naming"), dict):
+        file_keys["naming"] = set(raw["naming"])
+    info = config_report(cfg, file_keys)
+    if "--json" in sys.argv[2:]:
+        print(json.dumps(info, indent=2, ensure_ascii=False, default=str))
+        return
+    print(f"Config file:  {info['config_file']}"
+          f"{'' if info['config_file_exists'] else '  (missing — all defaults)'}")
+    print()
+    width = max(len(k) for k in info["settings"])
+    for k, d in info["settings"].items():
+        tag = "" if d["source"] == "file" else "   (default)"
+        print(f"  {k:<{width}}  {d['value']!r}{tag}")
+    print("\nPlaylist naming (example with name=Rock):")
+    for k, d in info["naming"].items():
+        tag = "" if d["source"] == "file" else "   (default)"
+        print(f"  {k:<9} {d['template']!r} -> {d['example']!r}{tag}")
+    print(f"\nGEMINI_API_KEY:  {'set' if info['gemini_api_key_set'] else 'NOT SET'}")
+    print(f"Tidal session:   {'present' if info['tidal_session_present'] else 'missing — run login'}")
+
+
 COMMANDS = {
     "login": cmd_login, "list-playlists": cmd_list_playlists, "sample": cmd_sample,
     "dedupe": cmd_dedupe, "run": cmd_run, "selftest": cmd_selftest, "once": cmd_once,
-    "status": cmd_status,
+    "status": cmd_status, "config": cmd_config,
 }
 
 if __name__ == "__main__":
