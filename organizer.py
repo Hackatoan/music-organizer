@@ -119,19 +119,19 @@ def new_session():
 
 def save_session(session):
     DATA.mkdir(parents=True, exist_ok=True)
-    SESSION_FILE.write_text(json.dumps({
+    tmp = SESSION_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({
         "token_type": session.token_type,
         "access_token": session.access_token,
         "refresh_token": session.refresh_token,
         "expiry_time": session.expiry_time.isoformat() if session.expiry_time else None,
     }))
-    # session.json holds a long-lived Tidal refresh_token (full account access,
-    # not just this run) — write_text() leaves it at the umask default (often
-    # world-readable, e.g. 644). Lock it down to owner-only.
+    # Restrict permissions before moving to final location to avoid world-readable window
     try:
-        SESSION_FILE.chmod(0o600)
+        tmp.chmod(0o600)
     except OSError as e:
-        log("warning: could not chmod session file to 600:", e)
+        log("warning: could not chmod temp session file to 600:", e)
+    tmp.replace(SESSION_FILE)
 
 
 def restore_session():
