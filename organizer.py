@@ -462,10 +462,10 @@ def one_pass(cfg, session, state):
                 names = targets_for(cfg, results.get(j))
                 state["classified"][str(t.id)] = names
                 existing_names.update(names)
-            save_state(state)
             log(f"  classified {min(i + bs, len(to_classify))}/{len(to_classify)}")
             if i + bs < len(to_classify):
                 time.sleep(cfg["gemini_delay_seconds"])
+        save_state(state)
 
     # ---- Phase 2: write to playlists (grouped, bulk, throttled) ----
     pending = [tid for tid in state["classified"] if tid not in state["_processed_set"]]
