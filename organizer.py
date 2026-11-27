@@ -242,7 +242,7 @@ def bulk_add(session, pid, track_ids, cfg, known_empty=False):
     since a brand-new playlist can't already contain any of these tracks and
     the paginated fetch would just confirm an empty set."""
     existing = set() if known_empty else playlist_track_ids(session, pid)
-    to_add = [tid for tid in track_ids if str(tid) not in existing]
+    to_add = [tid for tid in track_ids if tid not in existing]
     added = 0
     for chunk in chunks(to_add, cfg["add_chunk_size"]):
         for attempt in range(5):
