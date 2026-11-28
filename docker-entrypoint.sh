@@ -14,11 +14,11 @@ DATA_DIR="${DATA_DIR:-/data}"
 
 if [ "$(id -u)" = "0" ]; then
     if [ -d "$DATA_DIR" ]; then
-        owner="$(stat -c '%u' "$DATA_DIR")"
-        if [ "$owner" != "$(id -u appuser)" ]; then
-            echo "docker-entrypoint: chown $DATA_DIR to appuser (was uid $owner)"
-            chown -R appuser:appuser "$DATA_DIR"
-        fi
+        # Always fix ownership: a root process (e.g. `docker exec` without
+        # -u) can leave root-owned files inside an otherwise-correct dir,
+        # which crash-loops the app (session.json, 2026-11-25).
+        echo "docker-entrypoint: ensuring $DATA_DIR is owned by appuser"
+        chown -R appuser:appuser "$DATA_DIR"
     fi
     exec setpriv --reuid=appuser --regid=appuser --clear-groups -- "$@"
 fi
